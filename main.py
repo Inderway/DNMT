@@ -95,13 +95,19 @@ def check_opt():
     plt.show()
 
 
-def one_sentence_translate(sent, beam_search=True):
+def one_sentence_translate(sentence, beam_search=True):
+    """
+    Args:
+        sentence(string): source sentence
+    """
     # 初始化模型
     model = make_model(config.src_vocab_size, config.tgt_vocab_size, config.n_layers,
                        config.d_model, config.d_ff, config.n_heads, config.dropout)
     BOS = english_tokenizer_load().bos_id()  # 2
     EOS = english_tokenizer_load().eos_id()  # 3
-    src_tokens = [[BOS] + english_tokenizer_load().EncodeAsIds(sent) + [EOS]]
+    # Encode the sentence to id sequence, then add begin symbol and end symbol
+    # [[int, int, int,..., int]]
+    src_tokens = [[BOS] + english_tokenizer_load().EncodeAsIds(sentence) + [EOS]]
     batch_input = torch.LongTensor(np.array(src_tokens)).to(config.device)
     translate(batch_input, model, use_beam=beam_search)
 
@@ -117,8 +123,8 @@ def translate_example():
 
 if __name__ == "__main__":
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '2, 3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     import warnings
     warnings.filterwarnings('ignore')
-    # run()
+    run()
     translate_example()

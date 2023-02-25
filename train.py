@@ -17,8 +17,8 @@ def run_epoch(data, model, loss_compute):
     total_loss = 0.
 
     for batch in tqdm(data):
-        out = model(batch.src, batch.trg, batch.src_mask, batch.trg_mask)
-        loss = loss_compute(out, batch.trg_y, batch.ntokens)
+        out = model(batch.src, batch.tgt, batch.src_mask, batch.tgt_mask)
+        loss = loss_compute(out, batch.tgt_y, batch.ntokens)
 
         total_loss += loss
         total_tokens += batch.ntokens
@@ -141,13 +141,13 @@ class MultiGPULossCompute:
 def evaluate(data, model, mode='dev', use_beam=True):
     """在data上用训练好的模型进行预测，打印模型翻译结果"""
     sp_chn = chinese_tokenizer_load()
-    trg = []
+    tgt = []
     res = []
     with torch.no_grad():
         # 在data的英文数据长度上遍历下标
         for batch in tqdm(data):
             # 对应的中文句子
-            cn_sent = batch.trg_text
+            cn_sent = batch.tgt_text
             src = batch.src
             src_mask = (src != 0).unsqueeze(-2)
             if use_beam:
@@ -159,15 +159,15 @@ def evaluate(data, model, mode='dev', use_beam=True):
                                                     max_len=config.max_len)
             decode_result = [h[0] for h in decode_result]
             translation = [sp_chn.decode_ids(_s) for _s in decode_result]
-            trg.extend(cn_sent)
+            tgt.extend(cn_sent)
             res.extend(translation)
     if mode == 'test':
         with open(config.output_path, "w") as fp:
-            for i in range(len(trg)):
-                line = "idx:" + str(i) + trg[i] + '|||' + res[i] + '\n'
+            for i in range(len(tgt)):
+                line = "idx:" + str(i) + tgt[i] + '|||' + res[i] + '\n'
                 fp.write(line)
-    trg = [trg]
-    bleu = sacrebleu.corpus_bleu(res, trg, tokenize='zh')
+    tgt = [tgt]
+    bleu = sacrebleu.corpus_bleu(res, tgt, tokenize='zh')
     return float(bleu.score)
 
 

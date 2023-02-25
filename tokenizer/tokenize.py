@@ -41,19 +41,21 @@ def run():
 
 def test():
     sp = spm.SentencePieceProcessor()
-    text = "<s>美国总统特朗普今日抵达夏威夷。<pad><unk></s>"
+    text = "拿破仑建立法兰西第一帝国。"
     print("input sentence: \n"+text)
-    sp.Load("./chn.model")
+    sp.Load("./tokenizer/chn.model")
+    print("Pieces:")
     print(sp.EncodeAsPieces(text))
+    print("Ids:")
     print(sp.EncodeAsIds(text))
     print("input id sequence:")
     a = [0, 1, 2, 3, 4, 5]
     print(a)
     print(sp.decode_ids(a))
     # use this function to check the correspondence between piece and id
-    print([[sp.IdToPiece(id), id] for id in range(10)])
+    # print([[sp.IdToPiece(id), id] for id in range(10)])
 
 
 if __name__ == "__main__":
-    # run()
+    #run()
     test()

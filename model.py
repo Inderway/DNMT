@@ -128,6 +128,7 @@ class MultiHeadedAttention(nn.Module):
         if mask is not None:
             mask = mask.unsqueeze(1)
         # query的第一个维度值为batch size
+        # query.shape==batch_size x d_k
         nbatches = query.size(0)
         # 将embedding层乘以WQ，WK，WV矩阵(均为全连接)
         # 并将结果拆成h块，然后将第二个和第三个维度值互换(具体过程见上述解析)
@@ -303,6 +304,7 @@ class Generator(nn.Module):
 
 
 def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
+    # used for layer copying
     c = copy.deepcopy
     # 实例化Attention对象
     attn = MultiHeadedAttention(h, d_model).to(DEVICE)
