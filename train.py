@@ -13,11 +13,15 @@ from utils import chinese_tokenizer_load
 
 
 def run_epoch(data, model, loss_compute):
+    '''
+    data(DataLoader)
+    '''
     total_tokens = 0.
     total_loss = 0.
-
+    # enumerate batches
     for batch in tqdm(data):
         out = model(batch.src, batch.tgt, batch.src_mask, batch.tgt_mask)
+        # compute loss based on all valid tokens
         loss = loss_compute(out, batch.tgt_y, batch.ntokens)
 
         total_loss += loss
@@ -26,7 +30,13 @@ def run_epoch(data, model, loss_compute):
 
 
 def train(train_data, dev_data, model, model_par, criterion, optimizer):
-    """训练并保存模型"""
+    '''
+    训练并保存模型   
+
+    Args:
+        train_data(DataLoader)
+        dev_data(DataLoader)
+    '''
     # 初始化模型在dev集上的最优Loss为一个较大值
     best_bleu_score = 0.0
     early_stop = config.early_stop
@@ -149,6 +159,7 @@ def evaluate(data, model, mode='dev', use_beam=True):
             # 对应的中文句子
             cn_sent = batch.tgt_text
             src = batch.src
+            # batch_size x 1 x max_len
             src_mask = (src != 0).unsqueeze(-2)
             if use_beam:
                 decode_result, _ = beam_search(model, src, src_mask, config.max_len,

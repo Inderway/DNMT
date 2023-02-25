@@ -3,7 +3,6 @@ from data_loader import subsequent_mask
 
 import math
 import copy
-from torch.autograd import Variable
 
 import torch
 import torch.nn as nn
@@ -34,7 +33,7 @@ class LabelSmoothing(nn.Module):
         if mask.dim() > 0:
             true_dist.index_fill_(0, mask.squeeze(), 0.0)
         self.true_dist = true_dist
-        return self.criterion(x, Variable(true_dist, requires_grad=False))
+        return self.criterion(x, true_dist)
 
 
 class Embeddings(nn.Module):
@@ -85,7 +84,7 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         # 将一个batch的句子所有词的embedding与已构建好的positional embeding相加
         # (这里按照该批次数据的最大句子长度来取对应需要的那些positional embedding值)
-        x = x + Variable(self.pe[:, :x.size(1)], requires_grad=False)
+        x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
 
 
@@ -340,7 +339,7 @@ def batch_greedy_decode(model, src, src_mask, max_len=64, start_symbol=2, end_sy
 
     for s in range(max_len):
         tgt_mask = subsequent_mask(tgt.size(1)).expand(batch_size, -1, -1).type_as(src.data)
-        out = model.decode(memory, src_mask, Variable(tgt), Variable(tgt_mask))
+        out = model.decode(memory, src_mask, tgt, tgt_mask)
 
         prob = model.generator(out[:, -1, :])
         pred = torch.argmax(prob, dim=-1)
@@ -372,8 +371,8 @@ def greedy_decode(model, src, src_mask, max_len=64, start_symbol=2, end_symbol=3
         # decode得到隐层表示
         out = model.decode(memory,
                            src_mask,
-                           Variable(ys),
-                           Variable(subsequent_mask(ys.size(1)).type_as(src.data)))
+                           ys,
+                           subsequent_mask(ys.size(1)).type_as(src.data))
         # 将隐藏表示转为对词典各词的log_softmax概率分布表示
         prob = model.generator(out[:, -1])
         # 获取当前位置最大概率的预测词id
