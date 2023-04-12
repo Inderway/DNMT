@@ -1,3 +1,7 @@
+# train
+# created by wei
+# Mar 1, 2023
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -6,11 +10,10 @@ import logging
 import sacrebleu
 from tqdm import tqdm
 
-import config
+import _config
 from beam_decoder import beam_search
-from model import batch_greedy_decode
+from _model import batch_greedy_decode
 from utils import chinese_tokenizer_load
-
 
 def run_epoch(data, model, loss_compute):
     '''
@@ -23,7 +26,6 @@ def run_epoch(data, model, loss_compute):
         out = model(batch.src, batch.tgt, batch.src_mask, batch.tgt_mask)
         # compute loss based on all valid tokens
         loss = loss_compute(out, batch.tgt_y, batch.ntokens)
-
         total_loss += loss
         total_tokens += batch.ntokens
     return total_loss / total_tokens
@@ -31,7 +33,7 @@ def run_epoch(data, model, loss_compute):
 
 def train(train_data, dev_data, model, model_par, criterion, optimizer):
     '''
-    训练并保存模型   
+    train and save model  
 
     Args:
         train_data(DataLoader)
@@ -39,25 +41,24 @@ def train(train_data, dev_data, model, model_par, criterion, optimizer):
     '''
     # 初始化模型在dev集上的最优Loss为一个较大值
     best_bleu_score = 0.0
-    early_stop = config.early_stop
-    for epoch in range(1, config.epoch_num + 1):
-        # 模型训练
+    early_stop = _config.early_stop
+    for epoch in range(1, _config.epoch_num + 1):
         model.train()
         train_loss = run_epoch(train_data, model_par,
-                               MultiGPULossCompute(model.generator, criterion, config.device_id, optimizer))
+                               MultiGPULossCompute(model.generator, criterion, _config.device_id, optimizer))
         logging.info("Epoch: {}, loss: {}".format(epoch, train_loss))
-        # 模型验证
+        logging.info("-------- Validation! --------")
         model.eval()
         dev_loss = run_epoch(dev_data, model_par,
-                             MultiGPULossCompute(model.generator, criterion, config.device_id, None))
+                             MultiGPULossCompute(model.generator, criterion, _config.device_id, None))
         bleu_score = evaluate(dev_data, model)
         logging.info('Epoch: {}, Dev loss: {}, Bleu Score: {}'.format(epoch, dev_loss, bleu_score))
 
-        # 如果当前epoch的模型在dev集上的loss优于之前记录的最优loss则保存当前模型，并更新最优loss值
+        # update the model if loss is smaller than before
         if bleu_score > best_bleu_score:
-            torch.save(model.state_dict(), config.model_path)
+            torch.save(model.state_dict(), _config.model_path)
             best_bleu_score = bleu_score
-            early_stop = config.early_stop
+            early_stop = _config.early_stop
             logging.info("-------- Save Best Model! --------")
         else:
             early_stop -= 1
@@ -66,6 +67,50 @@ def train(train_data, dev_data, model, model_par, criterion, optimizer):
             logging.info("-------- Early Stop! --------")
             break
 
+def evaluate(data, model, mode='dev', use_beam=True):
+    """在data上用训练好的模型进行预测，打印模型翻译结果"""
+    sp_chn = chinese_tokenizer_load()
+    tgt = []
+    res = []
+    with torch.no_grad():
+        # 在data的英文数据长度上遍历下标
+        for batch in tqdm(data):
+            # 对应的中文句子
+            cn_sent = batch.tgt_text
+            src = batch.src
+            # batch_size x 1 x max_len
+            src_mask = (src != 0).unsqueeze(-2)
+            if use_beam:
+                decode_result, _ = beam_search(model, src, src_mask, _config.max_len,
+                                               _config.padding_idx, _config.bos_idx, _config.eos_idx,
+                                               _config.beam_size, _config.device)
+            else:
+                decode_result = batch_greedy_decode(model, src, src_mask,
+                                                    max_len=_config.max_len)
+            decode_result = [h[0] for h in decode_result]
+            translation = [sp_chn.decode_ids(_s) for _s in decode_result]
+            tgt.extend(cn_sent)
+            res.extend(translation)
+    if mode == 'test':
+        with open(_config.output_path, "w") as fp:
+            for i in range(len(tgt)):
+                line = "idx:" + str(i) + tgt[i] + '|||' + res[i] + '\n'
+                fp.write(line)
+    tgt = [tgt]
+    bleu = sacrebleu.corpus_bleu(res, tgt, tokenize='zh')
+    return float(bleu.score)
+
+def test(data, model, criterion):
+    with torch.no_grad():
+        # 加载模型
+        model.load_state_dict(torch.load(_config.model_path))
+        model_par = torch.nn.DataParallel(model)
+        model.eval()
+        # 开始预测
+        test_loss = run_epoch(data, model_par,
+                              MultiGPULossCompute(model.generator, criterion, _config.device_id, None))
+        bleu_score = evaluate(data, model, 'test')
+        logging.info('Test loss: {},  Bleu Score: {}'.format(test_loss, bleu_score))
 
 class LossCompute:
     """简单的计算损失和进行参数反向传播更新训练的函数"""
@@ -82,12 +127,11 @@ class LossCompute:
         loss.backward()
         if self.opt is not None:
             self.opt.step()
-            if config.use_noamopt:
+            if _config.use_noamopt:
                 self.opt.optimizer.zero_grad()
             else:
                 self.opt.zero_grad()
         return loss.data.item() * norm.float()
-
 
 class MultiGPULossCompute:
     """A multi-gpu loss compute and train function."""
@@ -141,73 +185,25 @@ class MultiGPULossCompute:
                                     target_device=self.devices[0])
             o1.backward(gradient=o2)
             self.opt.step()
-            if config.use_noamopt:
+            if _config.use_noamopt:
                 self.opt.optimizer.zero_grad()
             else:
                 self.opt.zero_grad()
         return total * normalize
-
-
-def evaluate(data, model, mode='dev', use_beam=True):
-    """在data上用训练好的模型进行预测，打印模型翻译结果"""
-    sp_chn = chinese_tokenizer_load()
-    tgt = []
-    res = []
-    with torch.no_grad():
-        # 在data的英文数据长度上遍历下标
-        for batch in tqdm(data):
-            # 对应的中文句子
-            cn_sent = batch.tgt_text
-            src = batch.src
-            # batch_size x 1 x max_len
-            src_mask = (src != 0).unsqueeze(-2)
-            if use_beam:
-                decode_result, _ = beam_search(model, src, src_mask, config.max_len,
-                                               config.padding_idx, config.bos_idx, config.eos_idx,
-                                               config.beam_size, config.device)
-            else:
-                decode_result = batch_greedy_decode(model, src, src_mask,
-                                                    max_len=config.max_len)
-            decode_result = [h[0] for h in decode_result]
-            translation = [sp_chn.decode_ids(_s) for _s in decode_result]
-            tgt.extend(cn_sent)
-            res.extend(translation)
-    if mode == 'test':
-        with open(config.output_path, "w") as fp:
-            for i in range(len(tgt)):
-                line = "idx:" + str(i) + tgt[i] + '|||' + res[i] + '\n'
-                fp.write(line)
-    tgt = [tgt]
-    bleu = sacrebleu.corpus_bleu(res, tgt, tokenize='zh')
-    return float(bleu.score)
-
-
-def test(data, model, criterion):
-    with torch.no_grad():
-        # 加载模型
-        model.load_state_dict(torch.load(config.model_path))
-        model_par = torch.nn.DataParallel(model)
-        model.eval()
-        # 开始预测
-        test_loss = run_epoch(data, model_par,
-                              MultiGPULossCompute(model.generator, criterion, config.device_id, None))
-        bleu_score = evaluate(data, model, 'test')
-        logging.info('Test loss: {},  Bleu Score: {}'.format(test_loss, bleu_score))
-
-
+    
 def translate(src, model, use_beam=True):
     """用训练好的模型进行预测单句，打印模型翻译结果"""
     sp_chn = chinese_tokenizer_load()
     with torch.no_grad():
-        model.load_state_dict(torch.load(config.model_path))
+        model.load_state_dict(torch.load(_config.model_path))
         model.eval()
         src_mask = (src != 0).unsqueeze(-2)
         if use_beam:
-            decode_result, _ = beam_search(model, src, src_mask, config.max_len,
-                                           config.padding_idx, config.bos_idx, config.eos_idx,
-                                           config.beam_size, config.device)
+            decode_result, _ = beam_search(model, src, src_mask, _config.max_len,
+                                        _config.padding_idx, _config.bos_idx, _config.eos_idx,
+                                        _config.beam_size, _config.device)
             decode_result = [h[0] for h in decode_result]
         else:
-            decode_result = batch_greedy_decode(model, src, src_mask, max_len=config.max_len)
+            decode_result = batch_greedy_decode(model, src, src_mask, max_len=_config.max_len)
         translation = [sp_chn.decode_ids(_s) for _s in decode_result]
         print(translation[0])

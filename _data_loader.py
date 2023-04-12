@@ -1,7 +1,3 @@
-# data loader
-# created by wei
-# Mar 1, 2023
-
 import torch
 import json
 import numpy as np
@@ -9,27 +5,10 @@ from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 from utils import english_tokenizer_load
 from utils import chinese_tokenizer_load
-from torch.nn import Transformer as Tfm
-import config
 
-device = config.DEVICE
+import _config
+DEVICE = _config.device
 
-
-def generate_square_subsequent_mask(sz):
-    mask = (torch.triu(torch.ones((sz, sz), device=device)) == 1).transpose(0, 1)
-    # -inf means be masked
-    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
-    return mask
-
-def create_mask(src, tgt):
-    src_seq_len = src.shape[1]
-    tgt_seq_len = tgt.shape[1]
-
-    tgt_mask = generate_square_subsequent_mask(tgt_seq_len)
-    src_mask = torch.zeros((src_seq_len, src_seq_len), device=device).type(torch.bool)
-    src_padding_mask = (src == config.PAD_IDX)
-    tgt_padding_mask = (tgt == config.PAD_IDX)
-    return src_mask, tgt_mask, src_padding_mask, tgt_padding_mask
 
 def subsequent_mask(size):
     """
@@ -66,20 +45,26 @@ class Batch:
     def __init__(self, src_text, tgt_text, src, tgt=None, pad=0):
         self.src_text = src_text
         self.tgt_text = tgt_text
-        src = src.to(device)
+        src = src.to(DEVICE)
         self.src = src
+        # 对于当前输入的句子非空部分进行判断成bool序列
+        # batch_size x 1 x max_len
+        # 1 corresponds to useful elements
+        self.src_mask = (src != pad).unsqueeze(-2)
         # 如果输出目标不为空，则需要对decoder要使用到的target句子进行mask
         if tgt is not None:
-            tgt = tgt.to(device)
+            tgt = tgt.to(DEVICE)
             # decoder要用到的target输入部分
             # remove the last token of each sequence
-            self.tgt_input = tgt[:, :-1]
+            self.tgt = tgt[:, :-1]
             # decoder训练时应预测输出的target结果
             # remove the first token(bos) of each sequence
-            self.tgt_out = tgt[:, 1:]
-            # true means be masked
-            self.src_mask, self.tgt_mask, self.src_padding_mask, self.tgt_padding_mask=create_mask(src,self.tgt_input)
-            self.ntokens = (self.tgt_out != pad).data.sum()
+            self.tgt_y = tgt[:, 1:]
+            # 将target输入部分进行attention mask
+            # batch_size x max_len x max_len
+            self.tgt_mask = self.make_std_mask(self.tgt, pad)
+            # 将应输出的target结果中实际的词数进行统计
+            self.ntokens = (self.tgt_y != pad).data.sum()
 
     # Mask掩码操作
     @staticmethod
@@ -133,14 +118,15 @@ class MTDataset(Dataset):
         out_cn_sent = []
         # dataset: [[sentence_en_0, sentence_ch_0], [sentence_en_1, sentence_ch_1],...]
         
-        # if len(dataset)>1000:
-        #     for idx, _ in enumerate(dataset[:1000]):
-        #         out_en_sent.append(dataset[idx][0])
-        #         out_cn_sent.append(dataset[idx][1])
-        # else:
-        for idx, _ in enumerate(dataset):
-            out_en_sent.append(dataset[idx][0])
-            out_cn_sent.append(dataset[idx][1])
+        # for testing
+        if len(dataset)>1000:
+            for idx, _ in enumerate(dataset[:1000]):
+                out_en_sent.append(dataset[idx][0])
+                out_cn_sent.append(dataset[idx][1])
+        else:
+            for idx, _ in enumerate(dataset):
+                out_en_sent.append(dataset[idx][0])
+                out_cn_sent.append(dataset[idx][1])
 
 
         if sort:
@@ -149,13 +135,6 @@ class MTDataset(Dataset):
             out_en_sent = [out_en_sent[i] for i in sorted_index]
             out_cn_sent = [out_cn_sent[i] for i in sorted_index]
         return out_en_sent, out_cn_sent
-
-    def get_token_seq(self, text):
-        tokens=[]
-        for sent in text:
-            tmp=[self.BOS] + self.sp_eng.EncodeAsIds(sent) + [self.EOS]
-            tokens.append(tmp+[self.PAD]*(config.sentence_length-len(tmp)))
-        return tokens
 
     def __getitem__(self, idx):
         '''

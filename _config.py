@@ -1,28 +1,25 @@
 import torch
 
-SRC_VOCAB_SIZE=32000
-TGT_VOCAB_SIZE=32000
-EMB_SIZE=512
-NHEAD=8
-FFN_HID_DIM=512
-BATCH_SIZE=32
-NUM_ENCODER_LAYERS=6
-NUM_DECODER_LAYERS=6
-NUM_EPOCHS=3
-PAD_IDX=0
-BOS_IDX=2
-EOS_IDX=3
-COLOR_LIST=['b', 'g', 'r', 'c', 'm', 'y']
+d_model = 512
+n_heads = 8
+n_layers = 6
 d_k = 64
 d_v = 64
 d_ff = 2048
 dropout = 0.1
+padding_idx = 0
+bos_idx = 2
+eos_idx = 3
+src_vocab_size = 32000
+tgt_vocab_size = 32000
+batch_size = 32
+epoch_num = 5
 early_stop = 5
 lr = 3e-4
 sentence_length=128
 
 # greed decode的最大句子长度
-MAX_LEN = 60
+max_len = 60
 # beam size for bleu
 beam_size = 3
 # Label Smoothing
@@ -37,7 +34,6 @@ test_data_path = './data/json/test.json'
 model_path = './experiment/model.pth'
 log_path = './experiment/train.log'
 output_path = './experiment/output.txt'
-image_path='./experiment/images'
 
 # gpu_id and device id is the relative id
 # thus, if you wanna use os.environ['CUDA_VISIBLE_DEVICES'] = '2, 3'
@@ -47,6 +43,6 @@ device_id = [0,1,2,3,4,5,6,7]
 
 # set device
 if gpu_id != '':
-    DEVICE = torch.device(f"cuda:1")
+    device = torch.device(f"cuda:{gpu_id}")
 else:
-    DEVICE = torch.device('cpu')
+    device = torch.device('cpu')

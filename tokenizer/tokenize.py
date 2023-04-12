@@ -1,5 +1,5 @@
 import sentencepiece as spm
-
+import config
 
 def train(input_file, vocab_size, model_name, model_type, character_coverage):
     """
@@ -17,8 +17,8 @@ def train(input_file, vocab_size, model_name, model_type, character_coverage):
     """
     # In vocab, the right number is not id
     # padding==0, unknown==1, begin==2 end==3
-    input_argument = '--input=%s --model_prefix=%s --vocab_size=%s --model_type=%s --character_coverage=%s  \
-                     --pad_id=0 --unk_id=1 --bos_id=2 --eos_id=3'
+    input_argument = f'--input=%s --model_prefix=%s --vocab_size=%s --model_type=%s --character_coverage=%s  \
+                     --pad_id={config.PAD_IDX} --unk_id=1 --bos_id={config.BOS_IDX} --eos_id={config.EOS_IDX}'
     cmd = input_argument % (input_file, model_name, vocab_size, model_type, character_coverage)
     spm.SentencePieceTrainer.Train(cmd)
 
