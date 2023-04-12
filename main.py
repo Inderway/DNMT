@@ -33,7 +33,7 @@ def run(model):
     dev_dataloader = DataLoader(dev_dataset, shuffle=False, batch_size=config.BATCH_SIZE,
                                 collate_fn=dev_dataset.collate_fn)
     test_dataloader = DataLoader(test_dataset, shuffle=False, batch_size=config.BATCH_SIZE,
-                                 collate_fn=test_dataset.collate_fn)
+                                 collate_fn=test_dataset.collate_fn)[:10]
 
     logging.info("-------- Get Dataloader! --------")
     # initialization
